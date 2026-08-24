@@ -1,0 +1,9 @@
+{
+  "sites": [
+    {
+      "name": "ornek-musteri",
+      "business": "Ankara'da bir inşaat firması",
+      "url": "https://example.com"
+    }
+  ]
+}

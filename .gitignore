@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.nobetci/
+.state-*/
+sites.json
+.env
