@@ -48,6 +48,7 @@ python -m nobetci --sites sites.json                 # a list
 python -m nobetci --sites sites.json --format markdown   # to paste to a client
 python -m nobetci --sites sites.json --shallow       # skip sitemaps, faster
 python -m nobetci --sites sites.json --no-ai         # never call the API
+python -m nobetci --sites sites.json --email         # mail the findings
 ```
 
 `sites.json`:
@@ -60,6 +61,28 @@ python -m nobetci --sites sites.json --no-ai         # never call the API
   ]
 }
 ```
+
+## Getting emailed
+
+```bash
+cp .env.example .env          # then fill it in
+python -m nobetci --test-email        # check the setup
+python -m nobetci --sites sites.json --email
+```
+
+Gmail needs an **app password**, not your account password:
+`myaccount.google.com` → Security → 2-Step Verification → App passwords.
+`.env` is gitignored and must stay that way.
+
+**It will not mail you the same thing twice.** A compromised site stays
+compromised, so checking every six hours would send four identical alerts a
+day and you would mute it inside a week — leaving the site unwatched while
+everyone believes it is watched. An alert goes out when the set of findings
+*changes*, or after 24 hours, and not otherwise. Wording and ordering are
+ignored, so a reworded detail does not read as a new problem.
+
+Mail is best-effort: a broken mailbox never turns a successful check into a
+failed run, so the exit code keeps meaning what it says.
 
 Exit codes: **0** nothing wrong · **1** needs attention · **2** couldn't run. So
 as a cron job it only bothers you when it matters:
@@ -113,4 +136,4 @@ request would otherwise become a silent monitoring gap.
 python -m unittest discover -s tests
 ```
 
-16 tests, offline, no API key required.
+23 tests, offline, no API key and no mailbox required.

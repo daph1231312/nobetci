@@ -112,5 +112,110 @@ class TestStore(unittest.TestCase):
             self.assertEqual(again.pages, ["https://x.test/a"])
 
 
+
+class TestNotify(unittest.TestCase):
+    """The suppression rule is the part that decides whether these alerts get
+    read or muted, so it is tested rather than trusted."""
+
+    def _run(self, *findings):
+        from nobetci.report import Run
+        r = Run.start()
+        r.findings = list(findings)
+        return r
+
+    def _f(self, site, kind, severity, title="t", detail="d"):
+        from nobetci.report import Finding
+        return Finding(site, kind, severity, title, detail)
+
+    def test_nothing_alarming_is_never_mailed(self):
+        import tempfile
+        from nobetci import notify
+        from nobetci.report import INFO
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._run(self._f("x", "baseline", INFO))
+            send, _ = notify.should_send(run, Path(tmp))
+            self.assertFalse(send)
+
+    def test_first_alert_is_sent_then_suppressed(self):
+        import tempfile
+        from nobetci import notify
+        from nobetci.report import CRITICAL
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            run = self._run(self._f("x", "spam_pages", CRITICAL))
+            send, _ = notify.should_send(run, d)
+            self.assertTrue(send)
+            notify.record_sent(run, d)
+            # Same problem, six hours later: must stay quiet.
+            send, why = notify.should_send(run, d)
+            self.assertFalse(send)
+            self.assertIn("suppressed", why)
+
+    def test_a_new_problem_breaks_suppression(self):
+        import tempfile
+        from nobetci import notify
+        from nobetci.report import CRITICAL, WARNING
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            first = self._run(self._f("x", "spam_pages", CRITICAL))
+            notify.record_sent(first, d)
+            worse = self._run(
+                self._f("x", "spam_pages", CRITICAL),
+                self._f("x", "cert_expiring", WARNING),
+            )
+            send, why = notify.should_send(worse, d)
+            self.assertTrue(send)
+            self.assertIn("changed", why)
+
+    def test_renotifies_after_the_window(self):
+        import tempfile
+        from nobetci import notify
+        from nobetci.report import CRITICAL
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            run = self._run(self._f("x", "spam_pages", CRITICAL))
+            notify.record_sent(run, d)
+            send, _ = notify.should_send(run, d, renotify_hours=0)
+            self.assertTrue(send)
+
+    def test_fingerprint_ignores_wording_and_order(self):
+        from nobetci import notify
+        from nobetci.report import CRITICAL, WARNING
+        a = self._run(
+            self._f("x", "spam_pages", CRITICAL, "başlık", "ayrıntı"),
+            self._f("y", "cert_expiring", WARNING),
+        )
+        b = self._run(
+            self._f("y", "cert_expiring", WARNING),
+            self._f("x", "spam_pages", CRITICAL, "farklı başlık", "farklı ayrıntı"),
+        )
+        self.assertEqual(notify.fingerprint(a), notify.fingerprint(b))
+
+    def test_subject_leads_with_the_worst_thing(self):
+        from nobetci import notify
+        from nobetci.report import CRITICAL, WARNING
+        run = self._run(
+            self._f("site.com", "slow", WARNING, "Site yavaş"),
+            self._f("site.com", "spam_pages", CRITICAL, "Zararlı içerik"),
+        )
+        s = notify.subject(run)
+        self.assertIn("ACİL", s)
+        self.assertIn("site.com", s)
+
+    def test_env_loader_does_not_override_real_environment(self):
+        import os, tempfile
+        from nobetci import notify
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / ".env"
+            p.write_text("NOBETCI_TEST_A=from_file\n# comment\nNOBETCI_TEST_B=x\n", encoding="utf-8")
+            os.environ["NOBETCI_TEST_A"] = "from_shell"
+            try:
+                notify.load_env(p)
+                self.assertEqual(os.environ["NOBETCI_TEST_A"], "from_shell")
+                self.assertEqual(os.environ["NOBETCI_TEST_B"], "x")
+            finally:
+                os.environ.pop("NOBETCI_TEST_A", None)
+                os.environ.pop("NOBETCI_TEST_B", None)
+
 if __name__ == "__main__":
     unittest.main()
