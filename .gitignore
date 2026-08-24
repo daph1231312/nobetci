@@ -4,3 +4,4 @@ __pycache__/
 .state-*/
 sites.json
 .env
+logs/
